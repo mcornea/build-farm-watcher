@@ -79,7 +79,9 @@ func (w *Watcher) runWatchCycle(ctx context.Context) {
 
 	select {
 	case <-time.After(w.restartTimer):
-		log.Printf("Watcher %d: Restart timer expired, stopping watchers", w.watcherID)
+		log.Printf("Watcher %d: Restart timer expired, gracefully stopping watchers", w.watcherID)
+		// Give informers time to complete ongoing operations
+		time.Sleep(3 * time.Second)
 		cancel()
 	case <-ctx.Done():
 		log.Printf("Watcher %d: Context cancelled, stopping watchers", w.watcherID)
@@ -120,15 +122,26 @@ func (w *Watcher) watchPods(ctx context.Context) {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*corev1.Pod)
-			log.Printf("Watcher %d: Pod deleted: %s/%s", w.watcherID, pod.Namespace, pod.Name)
+			var pod *corev1.Pod
+			switch t := obj.(type) {
+			case *corev1.Pod:
+				pod = t
+			case cache.DeletedFinalStateUnknown:
+				pod, _ = t.Obj.(*corev1.Pod)
+			}
+			if pod != nil {
+				log.Printf("Watcher %d: Pod deleted: %s/%s", w.watcherID, pod.Namespace, pod.Name)
+			}
 		},
 	})
 
 	go factory.Start(ctx.Done())
 
-	if !cache.WaitForCacheSync(ctx.Done(), podInformer.HasSynced) {
-		log.Printf("Watcher %d: Failed to sync pod cache", w.watcherID)
+	syncCtx, syncCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer syncCancel()
+
+	if !cache.WaitForCacheSync(syncCtx.Done(), podInformer.HasSynced) {
+		log.Printf("Watcher %d: Failed to sync pod cache within 5 minutes - cluster may be overloaded", w.watcherID)
 		return
 	}
 
@@ -171,15 +184,26 @@ func (w *Watcher) watchJobs(ctx context.Context) {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			job := obj.(*batchv1.Job)
-			log.Printf("Watcher %d: Job deleted: %s/%s", w.watcherID, job.Namespace, job.Name)
+			var job *batchv1.Job
+			switch t := obj.(type) {
+			case *batchv1.Job:
+				job = t
+			case cache.DeletedFinalStateUnknown:
+				job, _ = t.Obj.(*batchv1.Job)
+			}
+			if job != nil {
+				log.Printf("Watcher %d: Job deleted: %s/%s", w.watcherID, job.Namespace, job.Name)
+			}
 		},
 	})
 
 	go factory.Start(ctx.Done())
 
-	if !cache.WaitForCacheSync(ctx.Done(), jobInformer.HasSynced) {
-		log.Printf("Watcher %d: Failed to sync job cache", w.watcherID)
+	syncCtx, syncCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer syncCancel()
+
+	if !cache.WaitForCacheSync(syncCtx.Done(), jobInformer.HasSynced) {
+		log.Printf("Watcher %d: Failed to sync job cache within 5 minutes - cluster may be overloaded", w.watcherID)
 		return
 	}
 
