@@ -16,20 +16,24 @@ import (
 )
 
 type Watcher struct {
-	clientset          *kubernetes.Clientset
-	labelSelector      string
-	restartTimer       time.Duration
-	sleepBeforeRestart time.Duration
-	watcherID          int
+	clientset            *kubernetes.Clientset
+	labelSelector        string
+	restartTimer         time.Duration
+	sleepBeforeRestart   time.Duration
+	watcherID            int
+	secretsListInterval  time.Duration
+	enableSecretsListing bool
 }
 
-func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int) *Watcher {
+func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int, secretsListInterval time.Duration, enableSecretsListing bool) *Watcher {
 	return &Watcher{
-		clientset:          clientset,
-		labelSelector:      labelSelector,
-		restartTimer:       restartTimer,
-		sleepBeforeRestart: sleepBeforeRestart,
-		watcherID:          watcherID,
+		clientset:            clientset,
+		labelSelector:        labelSelector,
+		restartTimer:         restartTimer,
+		sleepBeforeRestart:   sleepBeforeRestart,
+		watcherID:            watcherID,
+		secretsListInterval:  secretsListInterval,
+		enableSecretsListing: enableSecretsListing,
 	}
 }
 
@@ -76,6 +80,14 @@ func (w *Watcher) runWatchCycle(ctx context.Context) {
 		defer wg.Done()
 		w.watchJobs(watchCtx)
 	}()
+
+	if w.enableSecretsListing {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.listSecrets(watchCtx)
+		}()
+	}
 
 	select {
 	case <-time.After(w.restartTimer):
@@ -222,4 +234,29 @@ func getJobConditions(job *batchv1.Job) string {
 		return "Running"
 	}
 	return fmt.Sprintf("%v", conditions)
+}
+
+func (w *Watcher) listSecrets(ctx context.Context) {
+	log.Printf("Watcher %d: Starting secrets listing with interval: %v", w.watcherID, w.secretsListInterval)
+
+	ticker := time.NewTicker(w.secretsListInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("Watcher %d: Secrets lister stopped", w.watcherID)
+			return
+		case <-ticker.C:
+			start := time.Now()
+			secrets, err := w.clientset.CoreV1().Secrets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			duration := time.Since(start)
+
+			if err != nil {
+				log.Printf("Watcher %d: Failed to list secrets: %v (took %v)", w.watcherID, err, duration)
+			} else {
+				log.Printf("Watcher %d: Listed %d secrets across all namespaces (took %v)", w.watcherID, len(secrets.Items), duration)
+			}
+		}
+	}
 }

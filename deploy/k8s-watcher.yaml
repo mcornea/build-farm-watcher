@@ -21,6 +21,9 @@ rules:
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -73,6 +76,10 @@ spec:
           value: "app=build-farm"
         - name: LOG_LEVEL
           value: "info"
+        - name: ENABLE_SECRETS_LISTING
+          value: "true"
+        - name: SECRETS_LIST_INTERVAL
+          value: "10s"
         resources:
           requests:
             memory: "64Mi"

@@ -25,6 +25,8 @@ func main() {
 	log.Printf("  NumWatchers: %d", cfg.NumWatchers)
 	log.Printf("  LabelSelector: %s", cfg.LabelSelector)
 	log.Printf("  LogLevel: %s", cfg.LogLevel)
+	log.Printf("  EnableSecretsListing: %v", cfg.EnableSecretsListing)
+	log.Printf("  SecretsListInterval: %v", cfg.SecretsListInterval)
 
 	clientset, err := createKubernetesClient()
 	if err != nil {
@@ -37,7 +39,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	for i := 0; i < cfg.NumWatchers; i++ {
-		w := watcher.NewWatcher(clientset, cfg.LabelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1)
+		w := watcher.NewWatcher(clientset, cfg.LabelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1, cfg.SecretsListInterval, cfg.EnableSecretsListing)
 		wg.Add(1)
 		go w.Start(ctx, &wg)
 	}

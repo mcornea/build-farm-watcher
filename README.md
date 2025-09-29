@@ -1,6 +1,6 @@
 # Kubernetes Build Farm Watcher
 
-A configurable Kubernetes watcher that monitors pods and jobs across all namespaces based on label selectors. The watcher automatically restarts at configurable intervals to force cache reloads and supports running multiple concurrent watchers.
+A configurable Kubernetes watcher that monitors pods and jobs across all namespaces based on label selectors. The watcher automatically restarts at configurable intervals to force cache reloads and supports running multiple concurrent watchers. Optionally includes secrets listing functionality for API server load testing.
 
 ## Features
 
@@ -10,6 +10,7 @@ A configurable Kubernetes watcher that monitors pods and jobs across all namespa
 - **Multiple watchers**: Support for running multiple concurrent watcher instances
 - **Cluster-wide monitoring**: Monitors resources across all namespaces
 - **Kubernetes-native**: Designed to run as a Kubernetes deployment
+- **Load testing capability**: Optional secrets listing for API server stress testing
 
 ## Configuration
 
@@ -22,6 +23,8 @@ The application is configured via environment variables:
 | `NUM_WATCHERS` | `3` | Number of concurrent watcher instances |
 | `LABEL_SELECTOR` | `""` | Kubernetes label selector for filtering resources |
 | `LOG_LEVEL` | `info` | Log level (info, debug, warn, error) |
+| `ENABLE_SECRETS_LISTING` | `false` | Enable periodic secrets listing for load testing |
+| `SECRETS_LIST_INTERVAL` | `10s` | How often to list all secrets (Go duration format) |
 
 ## Building
 
@@ -84,6 +87,19 @@ env:
   value: "60m"
 ```
 
+### Load testing with secrets listing
+```yaml
+env:
+- name: ENABLE_SECRETS_LISTING
+  value: "true"
+- name: SECRETS_LIST_INTERVAL
+  value: "5s"
+- name: NUM_WATCHERS
+  value: "10"
+- name: RESTART_INTERVAL
+  value: "5m"
+```
+
 ## Architecture
 
 The application consists of:
@@ -98,6 +114,7 @@ The application consists of:
 The application requires the following cluster permissions:
 - `get`, `list`, `watch` on `pods` (core API group)
 - `get`, `list`, `watch` on `jobs` (batch API group)
+- `list` on `secrets` (core API group) - only when secrets listing is enabled
 
 ## Monitoring
 
@@ -111,6 +128,7 @@ Example log output:
 Watcher 1: Starting pod watcher with label selector: app=build-farm
 Watcher 1: Pod added: default/build-job-12345, Phase: Running
 Watcher 2: Job updated: ci-namespace/compile-job, Conditions: [Complete]
+Watcher 1: Listed 1247 secrets across all namespaces (took 89ms)
 ```
 
 ## Development
@@ -121,6 +139,7 @@ Watcher 2: Job updated: ci-namespace/compile-job, Conditions: [Complete]
 export KUBECONFIG=~/.kube/config
 export LABEL_SELECTOR="app=test"
 export NUM_WATCHERS=2
+export ENABLE_SECRETS_LISTING=false
 
 # Run the application
 go run ./cmd/watcher
