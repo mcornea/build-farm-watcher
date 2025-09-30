@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -39,7 +40,9 @@ func main() {
 	var wg sync.WaitGroup
 
 	for i := 0; i < cfg.NumWatchers; i++ {
-		w := watcher.NewWatcher(clientset, cfg.LabelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1, cfg.SecretsListInterval, cfg.EnableSecretsListing)
+		watcherLabel := fmt.Sprintf("watcher%d", i+1)
+		labelSelector := fmt.Sprintf("build-farm-watcher=%s", watcherLabel)
+		w := watcher.NewWatcher(clientset, labelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1, cfg.SecretsListInterval, cfg.EnableSecretsListing)
 		wg.Add(1)
 		go w.Start(ctx, &wg)
 	}

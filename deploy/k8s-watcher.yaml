@@ -72,8 +72,6 @@ spec:
           value: "5s"
         - name: NUM_WATCHERS
           value: "2"
-        - name: LABEL_SELECTOR
-          value: "app=build-farm"
         - name: LOG_LEVEL
           value: "info"
         - name: ENABLE_SECRETS_LISTING

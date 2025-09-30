@@ -5,9 +5,9 @@ A configurable Kubernetes watcher that monitors pods and jobs across all namespa
 ## Features
 
 - **Multi-resource monitoring**: Watches both pods and jobs
-- **Label-based filtering**: Configurable label selectors to filter resources
+- **Label-based filtering**: Each watcher automatically uses a unique label selector (`build-farm-watcher=watcher1`, `build-farm-watcher=watcher2`, etc.)
 - **Auto-restart mechanism**: Periodic restarts to force cache reloads
-- **Multiple watchers**: Support for running multiple concurrent watcher instances
+- **Multiple watchers**: Support for running multiple concurrent watcher instances, each watching resources with its specific label
 - **Cluster-wide monitoring**: Monitors resources across all namespaces
 - **Kubernetes-native**: Designed to run as a Kubernetes deployment
 - **Load testing capability**: Optional secrets listing for API server stress testing
@@ -20,8 +20,7 @@ The application is configured via environment variables:
 |----------|---------|-------------|
 | `RESTART_INTERVAL` | `30m` | How often to restart watchers (Go duration format) |
 | `SLEEP_BEFORE_RESTART` | `5s` | Sleep time before restarting watchers (Go duration format) |
-| `NUM_WATCHERS` | `3` | Number of concurrent watcher instances |
-| `LABEL_SELECTOR` | `""` | Kubernetes label selector for filtering resources |
+| `NUM_WATCHERS` | `3` | Number of concurrent watcher instances (each gets label `build-farm-watcher=watcher<N>`) |
 | `LOG_LEVEL` | `info` | Log level (info, debug, warn, error) |
 | `ENABLE_SECRETS_LISTING` | `false` | Enable periodic secrets listing for load testing |
 | `SECRETS_LIST_INTERVAL` | `10s` | How often to list all secrets (Go duration format) |
@@ -64,27 +63,32 @@ kubectl apply -f deploy/k8s-watcher.yaml
 
 ## Usage Examples
 
-### Monitor build farm pods
-Update the environment variables in the deployment to watch for build farm related resources:
+### Basic Setup
+Set the number of watchers you want to run. Each watcher will monitor resources with its assigned label:
 ```yaml
 env:
-- name: LABEL_SELECTOR
-  value: "app=build-farm"
 - name: NUM_WATCHERS
-  value: "5"
+  value: "3"
 - name: RESTART_INTERVAL
   value: "15m"
 ```
 
-### Monitor CI/CD pipeline jobs
+This creates 3 watchers that will monitor resources with labels:
+- `build-farm-watcher=watcher1`
+- `build-farm-watcher=watcher2`
+- `build-farm-watcher=watcher3`
+
+### Label Your Resources
+To have resources monitored by a specific watcher, add the appropriate label to your pods/jobs:
 ```yaml
-env:
-- name: LABEL_SELECTOR
-  value: "pipeline=ci,component=builder"
-- name: NUM_WATCHERS
-  value: "2"
-- name: RESTART_INTERVAL
-  value: "60m"
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-build-pod
+  labels:
+    build-farm-watcher: watcher1
+spec:
+  # ... pod spec
 ```
 
 ### Load testing with secrets listing
@@ -105,9 +109,16 @@ env:
 The application consists of:
 
 1. **Main Process**: Coordinates multiple watcher goroutines
-2. **Watcher Instances**: Each watcher monitors both pods and jobs
+2. **Watcher Instances**: Each watcher monitors both pods and jobs with its unique label selector (`build-farm-watcher=watcher<N>`)
 3. **Restart Mechanism**: Watchers automatically restart at configured intervals
 4. **Cache Reload**: Restarts force Kubernetes client cache reloads
+
+### Label Selector Assignment
+When you set `NUM_WATCHERS=N`, the application automatically creates N watchers with label selectors:
+- Watcher 1: `build-farm-watcher=watcher1`
+- Watcher 2: `build-farm-watcher=watcher2`
+- ...
+- Watcher N: `build-farm-watcher=watcher<N>`
 
 ## RBAC Permissions
 
@@ -125,8 +136,9 @@ kubectl logs -f deployment/k8s-watcher
 
 Example log output:
 ```
-Watcher 1: Starting pod watcher with label selector: app=build-farm
+Watcher 1: Starting pod watcher with label selector: build-farm-watcher=watcher1
 Watcher 1: Pod added: default/build-job-12345, Phase: Running
+Watcher 2: Starting job watcher with label selector: build-farm-watcher=watcher2
 Watcher 2: Job updated: ci-namespace/compile-job, Conditions: [Complete]
 Watcher 1: Listed 1247 secrets across all namespaces (took 89ms)
 ```
@@ -137,7 +149,6 @@ Watcher 1: Listed 1247 secrets across all namespaces (took 89ms)
 ```bash
 # Set environment variables
 export KUBECONFIG=~/.kube/config
-export LABEL_SELECTOR="app=test"
 export NUM_WATCHERS=2
 export ENABLE_SECRETS_LISTING=false
 
