@@ -27,9 +27,11 @@ type Watcher struct {
 	jobsListInterval     time.Duration
 	enableJobsListing    bool
 	namespaceFilterRegex *regexp.Regexp
+	enablePodWatcher     bool
+	enableJobWatcher     bool
 }
 
-func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int, secretsListInterval time.Duration, enableSecretsListing bool, jobsListInterval time.Duration, enableJobsListing bool, namespaceFilterRegex string) *Watcher {
+func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int, secretsListInterval time.Duration, enableSecretsListing bool, jobsListInterval time.Duration, enableJobsListing bool, namespaceFilterRegex string, enablePodWatcher bool, enableJobWatcher bool) *Watcher {
 	var compiledRegex *regexp.Regexp
 	if namespaceFilterRegex != "" {
 		var err error
@@ -51,6 +53,8 @@ func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTi
 		jobsListInterval:     jobsListInterval,
 		enableJobsListing:    enableJobsListing,
 		namespaceFilterRegex: compiledRegex,
+		enablePodWatcher:     enablePodWatcher,
+		enableJobWatcher:     enableJobWatcher,
 	}
 }
 
@@ -86,17 +90,21 @@ func (w *Watcher) runWatchCycle(ctx context.Context) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		w.watchPods(watchCtx)
-	}()
+	if w.enablePodWatcher {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.watchPods(watchCtx)
+		}()
+	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		w.watchJobs(watchCtx)
-	}()
+	if w.enableJobWatcher {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.watchJobs(watchCtx)
+		}()
+	}
 
 	if w.enableSecretsListing {
 		wg.Add(1)

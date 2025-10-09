@@ -23,6 +23,8 @@ The application is configured via environment variables:
 | `SLEEP_BEFORE_RESTART` | `5s` | Sleep time before restarting watchers (Go duration format) |
 | `NUM_WATCHERS` | `3` | Number of concurrent watcher instances (each gets label `build-farm-watcher=watcher<N>`) |
 | `LOG_LEVEL` | `info` | Log level (info, debug, warn, error) |
+| `ENABLE_POD_WATCHER` | `true` | Enable pod watching via informers |
+| `ENABLE_JOB_WATCHER` | `true` | Enable job watching via informers |
 | `ENABLE_SECRETS_LISTING` | `false` | Enable periodic secrets listing for load testing |
 | `SECRETS_LIST_INTERVAL` | `10s` | How often to list all secrets (Go duration format) |
 | `ENABLE_JOBS_LISTING` | `false` | Enable periodic jobs listing for load testing |
@@ -129,6 +131,26 @@ env:
   value: "5"
 - name: RESTART_INTERVAL
   value: "10m"
+```
+
+### Listing only (without watchers)
+For pure load testing without the overhead of informer-based watchers:
+```yaml
+env:
+- name: ENABLE_POD_WATCHER
+  value: "false"
+- name: ENABLE_JOB_WATCHER
+  value: "false"
+- name: ENABLE_SECRETS_LISTING
+  value: "true"
+- name: SECRETS_LIST_INTERVAL
+  value: "5s"
+- name: ENABLE_JOBS_LISTING
+  value: "true"
+- name: JOBS_LIST_INTERVAL
+  value: "5s"
+- name: NUM_WATCHERS
+  value: "10"
 ```
 
 ## Architecture

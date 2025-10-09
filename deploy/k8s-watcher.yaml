@@ -77,6 +77,10 @@ spec:
           value: "2"
         - name: LOG_LEVEL
           value: "info"
+        - name: ENABLE_POD_WATCHER
+          value: "true"
+        - name: ENABLE_JOB_WATCHER
+          value: "true"
         - name: ENABLE_SECRETS_LISTING
           value: "true"
         - name: SECRETS_LIST_INTERVAL

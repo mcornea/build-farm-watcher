@@ -17,6 +17,8 @@ type Config struct {
 	JobsListInterval     time.Duration
 	EnableJobsListing    bool
 	NamespaceFilterRegex string
+	EnablePodWatcher     bool
+	EnableJobWatcher     bool
 }
 
 func Load() *Config {
@@ -30,6 +32,8 @@ func Load() *Config {
 	jobsListInterval := getEnvDuration("JOBS_LIST_INTERVAL", 10*time.Second)
 	enableJobsListing := getEnvBool("ENABLE_JOBS_LISTING", false)
 	namespaceFilterRegex := getEnvString("NAMESPACE_FILTER_REGEX", "")
+	enablePodWatcher := getEnvBool("ENABLE_POD_WATCHER", true)
+	enableJobWatcher := getEnvBool("ENABLE_JOB_WATCHER", true)
 
 	return &Config{
 		RestartInterval:      restartInterval,
@@ -42,6 +46,8 @@ func Load() *Config {
 		JobsListInterval:     jobsListInterval,
 		EnableJobsListing:    enableJobsListing,
 		NamespaceFilterRegex: namespaceFilterRegex,
+		EnablePodWatcher:     enablePodWatcher,
+		EnableJobWatcher:     enableJobWatcher,
 	}
 }
 
