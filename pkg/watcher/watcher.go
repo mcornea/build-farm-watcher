@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"sync"
 	"time"
 
@@ -23,9 +24,22 @@ type Watcher struct {
 	watcherID            int
 	secretsListInterval  time.Duration
 	enableSecretsListing bool
+	jobsListInterval     time.Duration
+	enableJobsListing    bool
+	namespaceFilterRegex *regexp.Regexp
 }
 
-func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int, secretsListInterval time.Duration, enableSecretsListing bool) *Watcher {
+func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTimer time.Duration, sleepBeforeRestart time.Duration, watcherID int, secretsListInterval time.Duration, enableSecretsListing bool, jobsListInterval time.Duration, enableJobsListing bool, namespaceFilterRegex string) *Watcher {
+	var compiledRegex *regexp.Regexp
+	if namespaceFilterRegex != "" {
+		var err error
+		compiledRegex, err = regexp.Compile(namespaceFilterRegex)
+		if err != nil {
+			log.Printf("Watcher %d: Failed to compile namespace filter regex '%s': %v. Ignoring filter.", watcherID, namespaceFilterRegex, err)
+			compiledRegex = nil
+		}
+	}
+
 	return &Watcher{
 		clientset:            clientset,
 		labelSelector:        labelSelector,
@@ -34,6 +48,9 @@ func NewWatcher(clientset *kubernetes.Clientset, labelSelector string, restartTi
 		watcherID:            watcherID,
 		secretsListInterval:  secretsListInterval,
 		enableSecretsListing: enableSecretsListing,
+		jobsListInterval:     jobsListInterval,
+		enableJobsListing:    enableJobsListing,
+		namespaceFilterRegex: compiledRegex,
 	}
 }
 
@@ -86,6 +103,14 @@ func (w *Watcher) runWatchCycle(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			w.listSecrets(watchCtx)
+		}()
+	}
+
+	if w.enableJobsListing {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.listJobs(watchCtx)
 		}()
 	}
 
@@ -237,7 +262,11 @@ func getJobConditions(job *batchv1.Job) string {
 }
 
 func (w *Watcher) listSecrets(ctx context.Context) {
-	log.Printf("Watcher %d: Starting secrets listing with interval: %v", w.watcherID, w.secretsListInterval)
+	filterMsg := "all namespaces"
+	if w.namespaceFilterRegex != nil {
+		filterMsg = fmt.Sprintf("namespaces matching '%s'", w.namespaceFilterRegex.String())
+	}
+	log.Printf("Watcher %d: Starting secrets listing with interval: %v, filter: %s", w.watcherID, w.secretsListInterval, filterMsg)
 
 	ticker := time.NewTicker(w.secretsListInterval)
 	defer ticker.Stop()
@@ -249,13 +278,98 @@ func (w *Watcher) listSecrets(ctx context.Context) {
 			return
 		case <-ticker.C:
 			start := time.Now()
-			secrets, err := w.clientset.CoreV1().Secrets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-			duration := time.Since(start)
+			totalSecrets := 0
 
-			if err != nil {
-				log.Printf("Watcher %d: Failed to list secrets: %v (took %v)", w.watcherID, err, duration)
+			if w.namespaceFilterRegex == nil {
+				// List across all namespaces
+				secrets, err := w.clientset.CoreV1().Secrets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				duration := time.Since(start)
+
+				if err != nil {
+					log.Printf("Watcher %d: Failed to list secrets: %v (took %v)", w.watcherID, err, duration)
+				} else {
+					log.Printf("Watcher %d: Listed %d secrets across all namespaces (took %v)", w.watcherID, len(secrets.Items), duration)
+				}
 			} else {
-				log.Printf("Watcher %d: Listed %d secrets across all namespaces (took %v)", w.watcherID, len(secrets.Items), duration)
+				// List namespaces first, filter by regex, then list secrets in matching namespaces
+				namespaces, err := w.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+				if err != nil {
+					duration := time.Since(start)
+					log.Printf("Watcher %d: Failed to list namespaces: %v (took %v)", w.watcherID, err, duration)
+					continue
+				}
+
+				matchedNamespaces := 0
+				for _, ns := range namespaces.Items {
+					if w.namespaceFilterRegex.MatchString(ns.Name) {
+						matchedNamespaces++
+						secrets, err := w.clientset.CoreV1().Secrets(ns.Name).List(ctx, metav1.ListOptions{})
+						if err != nil {
+							log.Printf("Watcher %d: Failed to list secrets in namespace %s: %v", w.watcherID, ns.Name, err)
+						} else {
+							totalSecrets += len(secrets.Items)
+						}
+					}
+				}
+				duration := time.Since(start)
+				log.Printf("Watcher %d: Listed %d secrets across %d namespaces matching '%s' (took %v)", w.watcherID, totalSecrets, matchedNamespaces, w.namespaceFilterRegex.String(), duration)
+			}
+		}
+	}
+}
+
+func (w *Watcher) listJobs(ctx context.Context) {
+	filterMsg := "all namespaces"
+	if w.namespaceFilterRegex != nil {
+		filterMsg = fmt.Sprintf("namespaces matching '%s'", w.namespaceFilterRegex.String())
+	}
+	log.Printf("Watcher %d: Starting jobs listing with interval: %v, filter: %s", w.watcherID, w.jobsListInterval, filterMsg)
+
+	ticker := time.NewTicker(w.jobsListInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("Watcher %d: Jobs lister stopped", w.watcherID)
+			return
+		case <-ticker.C:
+			start := time.Now()
+			totalJobs := 0
+
+			if w.namespaceFilterRegex == nil {
+				// List across all namespaces
+				jobs, err := w.clientset.BatchV1().Jobs(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				duration := time.Since(start)
+
+				if err != nil {
+					log.Printf("Watcher %d: Failed to list jobs: %v (took %v)", w.watcherID, err, duration)
+				} else {
+					log.Printf("Watcher %d: Listed %d jobs across all namespaces (took %v)", w.watcherID, len(jobs.Items), duration)
+				}
+			} else {
+				// List namespaces first, filter by regex, then list jobs in matching namespaces
+				namespaces, err := w.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+				if err != nil {
+					duration := time.Since(start)
+					log.Printf("Watcher %d: Failed to list namespaces: %v (took %v)", w.watcherID, err, duration)
+					continue
+				}
+
+				matchedNamespaces := 0
+				for _, ns := range namespaces.Items {
+					if w.namespaceFilterRegex.MatchString(ns.Name) {
+						matchedNamespaces++
+						jobs, err := w.clientset.BatchV1().Jobs(ns.Name).List(ctx, metav1.ListOptions{})
+						if err != nil {
+							log.Printf("Watcher %d: Failed to list jobs in namespace %s: %v", w.watcherID, ns.Name, err)
+						} else {
+							totalJobs += len(jobs.Items)
+						}
+					}
+				}
+				duration := time.Since(start)
+				log.Printf("Watcher %d: Listed %d jobs across %d namespaces matching '%s' (took %v)", w.watcherID, totalJobs, matchedNamespaces, w.namespaceFilterRegex.String(), duration)
 			}
 		}
 	}

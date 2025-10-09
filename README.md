@@ -1,6 +1,6 @@
 # Kubernetes Build Farm Watcher
 
-A configurable Kubernetes watcher that monitors pods and jobs across all namespaces based on label selectors. The watcher automatically restarts at configurable intervals to force cache reloads and supports running multiple concurrent watchers. Optionally includes secrets listing functionality for API server load testing.
+A configurable Kubernetes watcher that monitors pods and jobs across all namespaces based on label selectors. The watcher automatically restarts at configurable intervals to force cache reloads and supports running multiple concurrent watchers. Optionally includes secrets and jobs listing functionality for API server load testing.
 
 ## Features
 
@@ -9,8 +9,9 @@ A configurable Kubernetes watcher that monitors pods and jobs across all namespa
 - **Auto-restart mechanism**: Periodic restarts to force cache reloads
 - **Multiple watchers**: Support for running multiple concurrent watcher instances, each watching resources with its specific label
 - **Cluster-wide monitoring**: Monitors resources across all namespaces
+- **Namespace filtering**: Supports regex-based namespace filtering for listing operations
 - **Kubernetes-native**: Designed to run as a Kubernetes deployment
-- **Load testing capability**: Optional secrets listing for API server stress testing
+- **Load testing capability**: Optional secrets and jobs listing for API server stress testing
 
 ## Configuration
 
@@ -24,6 +25,9 @@ The application is configured via environment variables:
 | `LOG_LEVEL` | `info` | Log level (info, debug, warn, error) |
 | `ENABLE_SECRETS_LISTING` | `false` | Enable periodic secrets listing for load testing |
 | `SECRETS_LIST_INTERVAL` | `10s` | How often to list all secrets (Go duration format) |
+| `ENABLE_JOBS_LISTING` | `false` | Enable periodic jobs listing for load testing |
+| `JOBS_LIST_INTERVAL` | `10s` | How often to list all jobs (Go duration format) |
+| `NAMESPACE_FILTER_REGEX` | `""` | Regex pattern to filter namespaces for listing operations (empty = all namespaces) |
 
 ## Building
 
@@ -91,17 +95,40 @@ spec:
   # ... pod spec
 ```
 
-### Load testing with secrets listing
+### Load testing with secrets and jobs listing
 ```yaml
 env:
 - name: ENABLE_SECRETS_LISTING
   value: "true"
 - name: SECRETS_LIST_INTERVAL
   value: "5s"
+- name: ENABLE_JOBS_LISTING
+  value: "true"
+- name: JOBS_LIST_INTERVAL
+  value: "5s"
 - name: NUM_WATCHERS
   value: "10"
 - name: RESTART_INTERVAL
   value: "5m"
+```
+
+### Load testing with namespace filtering
+```yaml
+env:
+- name: ENABLE_SECRETS_LISTING
+  value: "true"
+- name: SECRETS_LIST_INTERVAL
+  value: "5s"
+- name: ENABLE_JOBS_LISTING
+  value: "true"
+- name: JOBS_LIST_INTERVAL
+  value: "5s"
+- name: NAMESPACE_FILTER_REGEX
+  value: "^(prod-|staging-).*"
+- name: NUM_WATCHERS
+  value: "5"
+- name: RESTART_INTERVAL
+  value: "10m"
 ```
 
 ## Architecture
@@ -126,6 +153,7 @@ The application requires the following cluster permissions:
 - `get`, `list`, `watch` on `pods` (core API group)
 - `get`, `list`, `watch` on `jobs` (batch API group)
 - `list` on `secrets` (core API group) - only when secrets listing is enabled
+- `list` on `namespaces` (core API group) - only when namespace filtering is enabled
 
 ## Monitoring
 
@@ -141,6 +169,9 @@ Watcher 1: Pod added: default/build-job-12345, Phase: Running
 Watcher 2: Starting job watcher with label selector: build-farm-watcher=watcher2
 Watcher 2: Job updated: ci-namespace/compile-job, Conditions: [Complete]
 Watcher 1: Listed 1247 secrets across all namespaces (took 89ms)
+Watcher 2: Listed 342 jobs across all namespaces (took 45ms)
+Watcher 3: Listed 234 secrets across 12 namespaces matching '^(prod-|staging-).*' (took 67ms)
+Watcher 3: Listed 89 jobs across 12 namespaces matching '^(prod-|staging-).*' (took 34ms)
 ```
 
 ## Development

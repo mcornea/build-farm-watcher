@@ -28,6 +28,9 @@ func main() {
 	log.Printf("  LogLevel: %s", cfg.LogLevel)
 	log.Printf("  EnableSecretsListing: %v", cfg.EnableSecretsListing)
 	log.Printf("  SecretsListInterval: %v", cfg.SecretsListInterval)
+	log.Printf("  EnableJobsListing: %v", cfg.EnableJobsListing)
+	log.Printf("  JobsListInterval: %v", cfg.JobsListInterval)
+	log.Printf("  NamespaceFilterRegex: %s", cfg.NamespaceFilterRegex)
 
 	clientset, err := createKubernetesClient()
 	if err != nil {
@@ -42,7 +45,7 @@ func main() {
 	for i := 0; i < cfg.NumWatchers; i++ {
 		watcherLabel := fmt.Sprintf("watcher%d", i+1)
 		labelSelector := fmt.Sprintf("build-farm-watcher=%s", watcherLabel)
-		w := watcher.NewWatcher(clientset, labelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1, cfg.SecretsListInterval, cfg.EnableSecretsListing)
+		w := watcher.NewWatcher(clientset, labelSelector, cfg.RestartInterval, cfg.SleepBeforeRestart, i+1, cfg.SecretsListInterval, cfg.EnableSecretsListing, cfg.JobsListInterval, cfg.EnableJobsListing, cfg.NamespaceFilterRegex)
 		wg.Add(1)
 		go w.Start(ctx, &wg)
 	}

@@ -24,6 +24,9 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -78,6 +81,12 @@ spec:
           value: "true"
         - name: SECRETS_LIST_INTERVAL
           value: "10s"
+        - name: ENABLE_JOBS_LISTING
+          value: "true"
+        - name: JOBS_LIST_INTERVAL
+          value: "10s"
+        - name: NAMESPACE_FILTER_REGEX
+          value: ""
         resources:
           requests:
             memory: "64Mi"

@@ -14,6 +14,9 @@ type Config struct {
 	LogLevel             string
 	SecretsListInterval  time.Duration
 	EnableSecretsListing bool
+	JobsListInterval     time.Duration
+	EnableJobsListing    bool
+	NamespaceFilterRegex string
 }
 
 func Load() *Config {
@@ -24,6 +27,9 @@ func Load() *Config {
 	logLevel := getEnvString("LOG_LEVEL", "info")
 	secretsListInterval := getEnvDuration("SECRETS_LIST_INTERVAL", 10*time.Second)
 	enableSecretsListing := getEnvBool("ENABLE_SECRETS_LISTING", false)
+	jobsListInterval := getEnvDuration("JOBS_LIST_INTERVAL", 10*time.Second)
+	enableJobsListing := getEnvBool("ENABLE_JOBS_LISTING", false)
+	namespaceFilterRegex := getEnvString("NAMESPACE_FILTER_REGEX", "")
 
 	return &Config{
 		RestartInterval:      restartInterval,
@@ -33,6 +39,9 @@ func Load() *Config {
 		LogLevel:             logLevel,
 		SecretsListInterval:  secretsListInterval,
 		EnableSecretsListing: enableSecretsListing,
+		JobsListInterval:     jobsListInterval,
+		EnableJobsListing:    enableJobsListing,
+		NamespaceFilterRegex: namespaceFilterRegex,
 	}
 }
 
